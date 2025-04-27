@@ -185,6 +185,12 @@ def logout():
     flash('Logged out successfully', 'info')
     return redirect(url_for('login'))
 
+@app.route('/airports')
+@jwt_required()
+@cashier_required
+def airports():
+    airports = Airport.query.all()
+    return render_template('airports.html', airports=airports)
 
 # 3. Список аэропортов
 @app.route('/api/v1/airports', methods=['GET'])
