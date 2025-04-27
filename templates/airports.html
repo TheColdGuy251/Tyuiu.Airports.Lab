@@ -1,10 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
-
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Airports{% endblock %}
+{% block content %}
+<h2>List of Airports</h2>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>IATA Code</th>
+            <th>ICAO Code</th>
+            <th>City</th>
+            <th>Country</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for airport in airports %}
+        <tr>
+            <td>{{ airport.id }}</td>
+            <td>{{ airport.name }}</td>
+            <td>{{ airport.iata_code }}</td>
+            <td>{{ airport.icao_code }}</td>
+            <td>{{ airport.city }}</td>
+            <td>{{ airport.country }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
