@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, flash, render_template, redirect, url
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token,
-    get_jwt_identity, get_jwt,verify_jwt_in_request)
+    get_jwt_identity, get_jwt,verify_jwt_in_request, decode_token)
 from functools import wraps
 from datetime import timedelta
 from passlib.hash import pbkdf2_sha256
@@ -146,10 +146,14 @@ class Payment(db.Model):
 def cashier_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
+        token = session.get('access_token')
+        if not token:
+            flash("Access Denied: Missing token", "danger")
+            return redirect(url_for('login'))
         try:
-            verify_jwt_in_request()
-            claims = get_jwt()
-            if claims['role'] != 'cashier':
+            decoded_token = decode_token(token)  # Декодируем токен вручную
+            role = decoded_token.get('role')
+            if role != 'cashier':
                 flash("Access Denied: Cashier only", "danger")
                 return redirect(url_for('login'))
             return fn(*args, **kwargs)
@@ -157,6 +161,8 @@ def cashier_required(fn):
             flash("Access Denied", "danger")
             return redirect(url_for('login'))
     return wrapper
+
+
 
 
 # API Endpoints
@@ -186,11 +192,11 @@ def logout():
     return redirect(url_for('login'))
 
 @app.route('/airports')
-@jwt_required()
 @cashier_required
 def airports():
     airports = Airport.query.all()
     return render_template('airports.html', airports=airports)
+
 
 # 3. Список аэропортов
 @app.route('/api/v1/airports', methods=['GET'])
