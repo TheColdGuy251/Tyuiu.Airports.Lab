@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, flash, render_template, redirect, url_for, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token,
@@ -7,6 +7,7 @@ from functools import wraps
 from datetime import timedelta
 from passlib.hash import pbkdf2_sha256
 from dotenv import load_dotenv
+from forms.login import LoginForm
 import os
 
 # Загрузка переменных окружения
@@ -18,6 +19,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', 'sqlite:///air
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET', 'super-secret-key')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'another-super-secret-key')
 
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
@@ -148,45 +150,47 @@ def cashier_required(fn):
             verify_jwt_in_request()
             claims = get_jwt()
             if claims['role'] != 'cashier':
-                return jsonify({"msg": "Cashier access required"}), 403
+                flash("Access Denied: Cashier only", "danger")
+                return redirect(url_for('login'))
             return fn(*args, **kwargs)
         except Exception as e:
-            return jsonify({"msg": "Access denied", "error": str(e)}), 401
+            flash("Access Denied", "danger")
+            return redirect(url_for('login'))
     return wrapper
 
 
 # API Endpoints
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
 
-# 1. Аутентификация
-@app.route('/api/v1/auth/login', methods=['POST'])
+
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    if not request.is_json:
-        return jsonify({"msg": "Missing JSON in request"}), 400
+    form = LoginForm()
+    if form.validate_on_submit():
+        cashier = Cashier.query.filter_by(username=form.username.data).first()
+        if cashier and cashier.check_password(form.password.data):
+            access_token = create_access_token(identity=form.username.data, additional_claims={'role': cashier.role, 'cashier_id': cashier.id})
+            session['access_token'] = access_token
+            flash('Login successful', 'success')
+            return redirect(url_for('airports'))
+        else:
+            flash('Invalid username or password', 'danger')
+    return render_template('login.html', form=form)
 
-    username = request.json.get('username', None)
-    password = request.json.get('password', None)
-
-    if not username or not password:
-        return jsonify({"msg": "Missing username or password"}), 400
-
-    cashier = Cashier.query.filter_by(username=username).first()
-    if not cashier or not cashier.check_password(password):
-        return jsonify({"msg": "Bad username or password"}), 401
-
-    access_token = create_access_token(
-        identity=username,
-        additional_claims={'role': cashier.role, 'cashier_id': cashier.id}
-    )
-    return jsonify(access_token=access_token), 200
-
-
-# 2. Выход
-@app.route('/api/v1/auth/logout', methods=['POST'])
-@jwt_required()
+@app.route('/logout')
 def logout():
-    # В реальном приложении здесь можно добавить токен в черный список
-    return jsonify({"msg": "Successfully logged out"}), 200
+    session.pop('access_token', None)
+    flash('Logged out successfully', 'info')
+    return redirect(url_for('login'))
 
+@app.route('/airports')
+@jwt_required()
+@cashier_required
+def airports():
+    airports = Airport.query.all()
+    return render_template('airports.html', airports=airports)
 
 # 3. Список аэропортов
 @app.route('/api/v1/airports', methods=['GET'])
